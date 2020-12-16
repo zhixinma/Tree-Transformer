@@ -33,8 +33,8 @@ Then you can get the mask with the converted tree object and feed the inputs int
 ```python
 import torch
 import torch.nn as nn
-from tree_transformer import tree_to_mask
-from tree_transformer_mask import TreeTransformer
+from utils import tree_to_mask
+from model import TreeTransformer
 
 embed = nn.Embedding(vocab_size, word_dim)
 ttf_encoder = TreeTransformer(d_model)
