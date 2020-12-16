@@ -60,17 +60,6 @@ def tree_to_mask(tree):
         fa_i = remove_edge(fa, h, layer=i)
         node_cat = union(fa_i)
         attention_masks.append(get_attention_mask(node_cat))
-
-        # ind = list(range(len(pos)))
-        # print(tabulate([["tag"]+tag,
-        #                 ["height"]+h,
-        #                 ["index"]+ind,
-        #                 ["father"]+fa_i,
-        #                 ["class"]+node_cat], tablefmt="pretty"))
-        # attention_mask = attention_masks[i]
-        # mask_tab = [[tag[i]] + attention_mask.tolist()[i] for i in range(attention_mask.shape[0])]
-        # print(tabulate(mask_tab, tag, tablefmt="pretty"))
-
     return tag, torch.stack(attention_masks).bool()
 
 
