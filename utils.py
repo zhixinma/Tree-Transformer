@@ -1,6 +1,7 @@
 from nltk.tree import Tree
-from tabulate import tabulate
 import torch
+
+MAX_TREE_HEIGHT = 12
 
 
 def sort_tree_by_height(tree):
@@ -20,11 +21,9 @@ def format_fa(tree_position):
 
 
 def remove_edge(father, height, layer):
+    """ remove the invisible edges in different layers
+    """
     return [father[i] if height[father[i]] <= layer+1 else i for i in range(len(father))]
-
-
-def remove_edge_focus_verb(father, height, layer):
-    return [father[i] if height[i] <= layer else i for i in range(len(father))]
 
 
 def union(father):
@@ -55,24 +54,31 @@ def get_attention_mask(node_cls):
 def tree_to_mask(tree):
     pos, tag, h = sort_tree_by_height(tree)
     fa = format_fa(pos)
-    fa = remove_edge(fa, h, layer=2)
-    node_cat = union(fa)
-    attention_mask = get_attention_mask(node_cat)
+    attention_masks = []
+    layer_num = max(max(h), MAX_TREE_HEIGHT)
+    for i in range(layer_num):
+        fa_i = remove_edge(fa, h, layer=i)
+        node_cat = union(fa_i)
+        attention_masks.append(get_attention_mask(node_cat))
 
-    # tree.pretty_print()
-    # ind = list(range(len(pos)))
-    # print(tabulate([["tag"]+tag,
-    #                 ["height"]+h,
-    #                 ["index"]+ind,
-    #                 ["father"]+fa,
-    #                 ["class"]+node_cat], tablefmt="pretty"))
-    #
-    # mask_tab = [[tag[i]] + attention_mask.tolist()[i] for i in range(attention_mask.shape[0])]
-    # print(tabulate(mask_tab, tag, tablefmt="pretty"))
+        # ind = list(range(len(pos)))
+        # print(tabulate([["tag"]+tag,
+        #                 ["height"]+h,
+        #                 ["index"]+ind,
+        #                 ["father"]+fa_i,
+        #                 ["class"]+node_cat], tablefmt="pretty"))
+        # attention_mask = attention_masks[i]
+        # mask_tab = [[tag[i]] + attention_mask.tolist()[i] for i in range(attention_mask.shape[0])]
+        # print(tabulate(mask_tab, tag, tablefmt="pretty"))
 
-    return attention_mask
+    return tag, torch.stack(attention_masks).bool()
 
 
 if __name__ == '__main__':
-    _t = Tree.fromstring("(S (NP (D the) (N dog)) (VP (V chased) (NP (D the) (N cat))))")
-    mask = tree_to_mask(_t)
+    t = Tree.fromstring("(S (NP (D the) (N dog)) (VP (V chased) (NP (D the) (N cat))))")
+    t.pretty_print()
+
+    ids, masks = tree_to_mask(t)
+    print(ids)
+    print("mask:", masks.shape)
+
