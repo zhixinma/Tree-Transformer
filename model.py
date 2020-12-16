@@ -4,20 +4,6 @@ import math
 import copy
 
 
-class Transformer(nn.Module):
-    def __init__(self, d_model, n_head=5, n_layer=6):
-        super(Transformer, self).__init__()
-        tf_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_head)
-        self.tf_encoder = nn.TransformerEncoder(tf_layer, num_layers=n_layer)
-        self.positional_encoding = PositionalEncoding(d_model)
-
-    def forward(self, x):
-        x = self.positional_encoding(x)
-        output = self.tf_encoder(x)
-        hidden = output[:, 0]
-        return output, hidden
-
-
 class TreeTransformer(nn.Module):
     def __init__(self, d_model, n_head=5, n_layer=12):
         super(TreeTransformer, self).__init__()
@@ -96,3 +82,30 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         x = x + self.pe[:x.size(0), :]
         return self.dropout(x)
+
+
+if __name__ == "__main__":
+
+    def tok_list_to_id(x):
+        """ customize
+        """
+        return torch.arange(0, 14, 1).long()
+
+    from nltk.tree import Tree
+    from utils import tree_to_mask
+
+    vocab_size, d_word, d_model = 100, 500, 500
+    embed = nn.Embedding(vocab_size, d_word)
+    ttf_encoder = TreeTransformer(d_model)
+
+    t = Tree.fromstring('(S (NP (D the) (N dog)) (VP (V chased) (NP (D the) (N cat))))')
+    t.pretty_print()
+
+    cap_toks, att_mask = tree_to_mask(t)
+    cap_id = tok_list_to_id(cap_toks)
+    att_mask = att_mask.unsqueeze(0)  # add batch dim
+    cap_id = cap_id.unsqueeze(0)  # add batch dim
+
+    output, hidden = ttf_encoder(embed(cap_id), att_mask)
+    print("out:", output.shape)
+
