@@ -31,22 +31,33 @@ tree = convert_parse_tree_to_nltk_tree(constituency_parse)
 Then you can get the mask with the converted tree object and feed the inputs into tree transformer.
 
 ```python
-import torch
-import torch.nn as nn
-from utils import tree_to_mask
-from model import TreeTransformer
+def tok_list_to_id(x):
+    """ customize
+    """
+    return torch.arange(0, 14, 1).long()
 
-embed = nn.Embedding(vocab_size, word_dim)
+from nltk.tree import Tree
+from utils import tree_to_mask
+
+vocab_size, d_word, d_model = 100, 500, 500
+embed = nn.Embedding(vocab_size, d_word)
 ttf_encoder = TreeTransformer(d_model)
 
-cap_toks, att_mask = tree_to_mask()
+t = Tree.fromstring('(S (NP (D the) (N dog)) (VP (V chased) (NP (D the) (N cat))))')
+t.pretty_print()
+
+cap_toks, att_mask = tree_to_mask(t)
 cap_id = tok_list_to_id(cap_toks)
+att_mask = att_mask.unsqueeze(0)  # add batch dim
+cap_id = cap_id.unsqueeze(0)  # add batch dim
 
 output, hidden = ttf_encoder(embed(cap_id), att_mask)
+print("out:", output.shape)
 ```
 
 ### Example
 
+This is the constitute tree of the sentence: "the dog chased the cat".  
 ```
               S               
       ________|_____           
@@ -57,37 +68,78 @@ output, hidden = ttf_encoder(embed(cap_id), att_mask)
  D       N    V     D       N 
  |       |    |     |       |  
 the     dog chased the     cat
-
-------  -  --  --  --  -  -  -  -  -  ---  ---  ------  ---  ---
-tag     S  VP  NP  NP  D  N  V  D  N  the  dog  chased  the  cat
-height  5  4   3   3   2  2  2  2  2  1    1    1       1    1
-index   0  1   2   3   4  5  6  7  8  9    10   11      12   13
-father  0  1   2   3   4  5  6  7  8  4    5    6       7    8
-class   0  1   2   3   4  5  6  7  8  4    5    6       7    8
-------  -  --  --  --  -  -  -  -  -  ---  ---  ------  ---  ---
-```
-```
-              S               
-      ________|_____           
-     |              VP        
-     |         _____|___       
-     NP       |         NP    
-  ___|___     |      ___|___   
- D       N    V     D       N 
- |       |    |     |       |  
-the     dog chased the     cat
-
-------  -  --  --  --  -  -  -  -  -  ---  ---  ------  ---  ---
-tag     S  VP  NP  NP  D  N  V  D  N  the  dog  chased  the  cat
-height  5  4   3   3   2  2  2  2  2  1    1    1       1    1
-index   0  1   2   3   4  5  6  7  8  9    10   11      12   13
-father  0  1   2   3   2  2  1  3  3  4    5    6       7    8
-class   0  1   2   3   2  2  1  3  3  2    2    1       3    3
-------  -  --  --  --  -  -  -  -  -  ---  ---  ------  ---  ---
 ```
 
-The mask:
+In the first layer, a word is only visible to itself, the words relationship, class and corresponding mask are like this:
 ```
++--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
+|  tag   | S | VP | NP | NP | D | N | V | D | N | the | dog | chased | the | cat |
+| height | 5 | 4  | 3  | 3  | 2 | 2 | 2 | 2 | 2 |  1  |  1  |   1    |  1  |  1  |
+| index  | 0 | 1  | 2  | 3  | 4 | 5 | 6 | 7 | 8 |  9  | 10  |   11   | 12  | 13  |
+| father | 0 | 1  | 2  | 3  | 4 | 5 | 6 | 7 | 8 |  9  | 10  |   11   | 12  | 13  |
+| class  | 0 | 1  | 2  | 3  | 4 | 5 | 6 | 7 | 8 |  9  | 10  |   11   | 12  | 13  |
++--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
+
++--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
+|        | S | VP | NP | NP | D | N | V | D | N | the | dog | chased | the | cat |
++--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
+|   S    | 1 | 0  | 0  | 0  | 0 | 0 | 0 | 0 | 0 |  0  |  0  |   0    |  0  |  0  |
+|   VP   | 0 | 1  | 0  | 0  | 0 | 0 | 0 | 0 | 0 |  0  |  0  |   0    |  0  |  0  |
+|   NP   | 0 | 0  | 1  | 0  | 0 | 0 | 0 | 0 | 0 |  0  |  0  |   0    |  0  |  0  |
+|   NP   | 0 | 0  | 0  | 1  | 0 | 0 | 0 | 0 | 0 |  0  |  0  |   0    |  0  |  0  |
+|   D    | 0 | 0  | 0  | 0  | 1 | 0 | 0 | 0 | 0 |  0  |  0  |   0    |  0  |  0  |
+|   N    | 0 | 0  | 0  | 0  | 0 | 1 | 0 | 0 | 0 |  0  |  0  |   0    |  0  |  0  |
+|   V    | 0 | 0  | 0  | 0  | 0 | 0 | 1 | 0 | 0 |  0  |  0  |   0    |  0  |  0  |
+|   D    | 0 | 0  | 0  | 0  | 0 | 0 | 0 | 1 | 0 |  0  |  0  |   0    |  0  |  0  |
+|   N    | 0 | 0  | 0  | 0  | 0 | 0 | 0 | 0 | 1 |  0  |  0  |   0    |  0  |  0  |
+|  the   | 0 | 0  | 0  | 0  | 0 | 0 | 0 | 0 | 0 |  1  |  0  |   0    |  0  |  0  |
+|  dog   | 0 | 0  | 0  | 0  | 0 | 0 | 0 | 0 | 0 |  0  |  1  |   0    |  0  |  0  |
+| chased | 0 | 0  | 0  | 0  | 0 | 0 | 0 | 0 | 0 |  0  |  0  |   1    |  0  |  0  |
+|  the   | 0 | 0  | 0  | 0  | 0 | 0 | 0 | 0 | 0 |  0  |  0  |   0    |  1  |  0  |
+|  cat   | 0 | 0  | 0  | 0  | 0 | 0 | 0 | 0 | 0 |  0  |  0  |   0    |  0  |  1  |
++--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
+```
+
+In the second layer, a word is visible to the words in its height 1 subtree:
+```
++--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
+|  tag   | S | VP | NP | NP | D | N | V | D | N | the | dog | chased | the | cat |
+| height | 5 | 4  | 3  | 3  | 2 | 2 | 2 | 2 | 2 |  1  |  1  |   1    |  1  |  1  |
+| index  | 0 | 1  | 2  | 3  | 4 | 5 | 6 | 7 | 8 |  9  | 10  |   11   | 12  | 13  |
+| father | 0 | 1  | 2  | 3  | 4 | 5 | 6 | 7 | 8 |  4  |  5  |   6    |  7  |  8  |
+| class  | 0 | 1  | 2  | 3  | 4 | 5 | 6 | 7 | 8 |  4  |  5  |   6    |  7  |  8  |
++--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
+
++--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
+|        | S | VP | NP | NP | D | N | V | D | N | the | dog | chased | the | cat |
++--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
+|   S    | 1 | 0  | 0  | 0  | 0 | 0 | 0 | 0 | 0 |  0  |  0  |   0    |  0  |  0  |
+|   VP   | 0 | 1  | 0  | 0  | 0 | 0 | 0 | 0 | 0 |  0  |  0  |   0    |  0  |  0  |
+|   NP   | 0 | 0  | 1  | 0  | 0 | 0 | 0 | 0 | 0 |  0  |  0  |   0    |  0  |  0  |
+|   NP   | 0 | 0  | 0  | 1  | 0 | 0 | 0 | 0 | 0 |  0  |  0  |   0    |  0  |  0  |
+|   D    | 0 | 0  | 0  | 0  | 1 | 0 | 0 | 0 | 0 |  1  |  0  |   0    |  0  |  0  |
+|   N    | 0 | 0  | 0  | 0  | 0 | 1 | 0 | 0 | 0 |  0  |  1  |   0    |  0  |  0  |
+|   V    | 0 | 0  | 0  | 0  | 0 | 0 | 1 | 0 | 0 |  0  |  0  |   1    |  0  |  0  |
+|   D    | 0 | 0  | 0  | 0  | 0 | 0 | 0 | 1 | 0 |  0  |  0  |   0    |  1  |  0  |
+|   N    | 0 | 0  | 0  | 0  | 0 | 0 | 0 | 0 | 1 |  0  |  0  |   0    |  0  |  1  |
+|  the   | 0 | 0  | 0  | 0  | 1 | 0 | 0 | 0 | 0 |  1  |  0  |   0    |  0  |  0  |
+|  dog   | 0 | 0  | 0  | 0  | 0 | 1 | 0 | 0 | 0 |  0  |  1  |   0    |  0  |  0  |
+| chased | 0 | 0  | 0  | 0  | 0 | 0 | 1 | 0 | 0 |  0  |  0  |   1    |  0  |  0  |
+|  the   | 0 | 0  | 0  | 0  | 0 | 0 | 0 | 1 | 0 |  0  |  0  |   0    |  1  |  0  |
+|  cat   | 0 | 0  | 0  | 0  | 0 | 0 | 0 | 0 | 1 |  0  |  0  |   0    |  0  |  1  |
++--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
+```
+
+Similarly, a word is visible to the words in its height 2 subtree in the third layer:
+```
++--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
+|  tag   | S | VP | NP | NP | D | N | V | D | N | the | dog | chased | the | cat |
+| height | 5 | 4  | 3  | 3  | 2 | 2 | 2 | 2 | 2 |  1  |  1  |   1    |  1  |  1  |
+| index  | 0 | 1  | 2  | 3  | 4 | 5 | 6 | 7 | 8 |  9  | 10  |   11   | 12  | 13  |
+| father | 0 | 1  | 2  | 3  | 2 | 2 | 6 | 3 | 3 |  4  |  5  |   6    |  7  |  8  |
+| class  | 0 | 1  | 2  | 3  | 2 | 2 | 6 | 3 | 3 |  2  |  2  |   6    |  3  |  3  |
++--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
+
 +--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
 |        | S | VP | NP | NP | D | N | V | D | N | the | dog | chased | the | cat |
 +--------+---+----+----+----+---+---+---+---+---+-----+-----+--------+-----+-----+
